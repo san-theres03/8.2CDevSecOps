@@ -3,30 +3,38 @@ pipeline {
   options { timestamps() }
 
   environment {
-    SNYK_TOKEN = credentials('snyk-token')   // uses the credential you add in Jenkins
+    // ID must match what you created in Jenkins > Credentials
+    SNYK_TOKEN = credentials('SNYK_TOKEN')
   }
 
   stages {
     stage('Install Dependencies') {
-      steps { sh 'npm ci || npm install' }
+      steps {
+        sh 'npm ci || npm install'
+      }
     }
+
     stage('Run Tests') {
       steps {
-        // If you want explicit Snyk: sh 'npx snyk test || true'
+        // Snyk CLI will pick up SNYK_TOKEN from env automatically.
+        // If you ever need to force auth: sh 'npx snyk auth $SNYK_TOKEN || true'
         sh 'npm test || true'
       }
     }
-    stage('Security Audit') {
-      steps { sh 'npm audit || true' }
-    }
-  }
 
-  post {
-    always {
-      script {
-        // Only archive if something exists, avoids FilePath errors on early aborts
-        if (fileExists('coverage') || fileExists('npm-debug.log') || fileExists('logs')) {
-          archiveArtifacts artifacts: 'coverage/**, **/npm-debug.log, logs/**', allowEmptyArchive: true
+    stage('Security Audit') {
+      steps {
+        sh 'npm audit || true'
+      }
+    }
+
+    // Do archiving inside a stage (runs on the node so FilePath is available)
+    stage('Archive Artifacts') {
+      steps {
+        script {
+          if (fileExists('coverage'))       { archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true }
+          if (fileExists('logs'))           { archiveArtifacts artifacts: 'logs/**',     allowEmptyArchive: true }
+          if (fileExists('npm-debug.log'))  { archiveArtifacts artifacts: '**/npm-debug.log', allowEmptyArchive: true }
         }
       }
     }
