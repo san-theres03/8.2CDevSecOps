@@ -2,37 +2,33 @@ pipeline {
   agent any
   options { timestamps() }
 
-  // Pull the Snyk token you saved as a Secret Text credential with ID 'snyk-token'
   environment {
-    SNYK_TOKEN = credentials('snyk-token')
+    SNYK_TOKEN = credentials('snyk-token')   // uses the credential you add in Jenkins
   }
 
   stages {
     stage('Install Dependencies') {
-      steps {
-        // Use npm ci when a lockfile exists; otherwise fall back to npm install
-        sh 'if [ -f package-lock.json ]; then npm ci; else npm install; fi'
-      }
+      steps { sh 'npm ci || npm install' }
     }
-
-    stage('Run Tests (Snyk)') {
+    stage('Run Tests') {
       steps {
-        // In your repo, "npm test" runs "snyk test" and will auto-use SNYK_TOKEN
+        // If you want explicit Snyk: sh 'npx snyk test || true'
         sh 'npm test || true'
       }
     }
-
-    stage('Security Audit (npm)') {
-      steps {
-        sh 'npm audit || true'
-      }
+    stage('Security Audit') {
+      steps { sh 'npm audit || true' }
     }
   }
 
   post {
     always {
-      // Only keep this if you actually create these files; otherwise it’s harmless
-      archiveArtifacts artifacts: '**/npm-debug.log, logs/**', allowEmptyArchive: true
+      script {
+        // Only archive if something exists, avoids FilePath errors on early aborts
+        if (fileExists('coverage') || fileExists('npm-debug.log') || fileExists('logs')) {
+          archiveArtifacts artifacts: 'coverage/**, **/npm-debug.log, logs/**', allowEmptyArchive: true
+        }
+      }
     }
   }
 }
