@@ -40,3 +40,17 @@ pipeline {
     }
   }
 }
+
+post {
+  success {
+    emailext to: 'sand.car2024@gmail.com',
+             subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} success",
+             body: "Build: ${env.BUILD_URL}\nCommit: ${env.GIT_COMMIT}"
+  }
+  failure {
+    emailext to: 'sand.car2024@gmail.com',
+             subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} failed",
+             body: "Console: ${env.BUILD_URL}console"
+  }
+}
+
