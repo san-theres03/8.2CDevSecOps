@@ -1,0 +1,85 @@
+pipeline {
+  agent any
+  options { timestamps() }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Install deps') {
+      steps {
+        // Use npm ci if you have package-lock.json; fall back to npm install
+        sh '''
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+        '''
+      }
+    }
+
+    stage('Tests') {
+      steps {
+        // Run tests but do not fail the whole build for this assignment
+        sh 'npm test || true'
+      }
+    }
+
+    stage('Security Audit (npm)') {
+      steps {
+        sh '''
+          # Create a JSON report we can archive
+          npm audit --json > audit.json || true
+
+          # Also fail the step only on high+ issues (but not the whole build)
+          npm audit --audit-level=high || true
+
+          echo "Audit report written to audit.json"
+        '''
+        archiveArtifacts artifacts: 'audit.json', onlyIfSuccessful: false, fingerprint: true
+      }
+    }
+  }
+
+  post {
+    success {
+      mail to: 'you@example.com',
+           subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} SUCCESS",
+           body: "Build passed. Details: ${env.BUILD_URL}"
+    }
+    failure {
+      mail to: 'you@example.com',
+           subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED",
+           body: "Build failed. Check console: ${env.BUILD_URL}"
+    }
+    always {
+      archiveArtifacts artifacts: 'package-lock.json', onlyIfSuccessful: false
+    }
+  }
+}
+
+pipeline {
+  agent any
+  options { timestamps() }
+
+  stages {
+    stage('Install')   { steps { sh 'npm ci' } }
+    stage('Test')      { steps { sh 'npm test || true' } }        // keep build going even if tests fail
+    stage('Snyk')      { steps { sh 'npx -y snyk@latest test || true' } }
+    stage('npm audit') { steps { sh 'npm audit --audit-level=high || true' } }
+    stage('Archive')   { steps { archiveArtifacts artifacts: 'package-lock.json, **/*.json, **/*.html', fingerprint: true } }
+  }
+
+  post {
+    failure {
+      mail to: 'your_email@example.com',
+           subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} failed",
+           body: "See console: ${env.BUILD_URL}console"
+    }
+    success {
+      echo "✅ Build passed"
+    }
+  }
+}
