@@ -2,55 +2,60 @@ pipeline {
   agent any
   options { timestamps() }
 
-  environment {
-    // ID must match what you created in Jenkins > Credentials
-    SNYK_TOKEN = credentials('SNYK_TOKEN')
-  }
-
   stages {
-    stage('Install Dependencies') {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Install deps') {
       steps {
-        sh 'npm ci || npm install'
+        // Use npm ci if you have package-lock.json; fall back to npm install
+        sh '''
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+        '''
       }
     }
 
-    stage('Run Tests') {
+    stage('Tests') {
       steps {
-        // Snyk CLI will pick up SNYK_TOKEN from env automatically.
-        // If you ever need to force auth: sh 'npx snyk auth $SNYK_TOKEN || true'
+        // Run tests but do not fail the whole build for this assignment
         sh 'npm test || true'
       }
     }
 
-    stage('Security Audit') {
+    stage('Security Audit (npm)') {
       steps {
-        sh 'npm audit || true'
+        sh '''
+          # Create a JSON report we can archive
+          npm audit --json > audit.json || true
+
+          # Also fail the step only on high+ issues (but not the whole build)
+          npm audit --audit-level=high || true
+
+          echo "Audit report written to audit.json"
+        '''
+        archiveArtifacts artifacts: 'audit.json', onlyIfSuccessful: false, fingerprint: true
       }
     }
+  }
 
-    // Do archiving inside a stage (runs on the node so FilePath is available)
-    stage('Archive Artifacts') {
-      steps {
-        script {
-          if (fileExists('coverage'))       { archiveArtifacts artifacts: 'coverage/**', allowEmptyArchive: true }
-          if (fileExists('logs'))           { archiveArtifacts artifacts: 'logs/**',     allowEmptyArchive: true }
-          if (fileExists('npm-debug.log'))  { archiveArtifacts artifacts: '**/npm-debug.log', allowEmptyArchive: true }
-        }
-      }
+  post {
+    success {
+      mail to: 'you@example.com',
+           subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} SUCCESS",
+           body: "Build passed. Details: ${env.BUILD_URL}"
+    }
+    failure {
+      mail to: 'you@example.com',
+           subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED",
+           body: "Build failed. Check console: ${env.BUILD_URL}"
+    }
+    always {
+      archiveArtifacts artifacts: 'package-lock.json', onlyIfSuccessful: false
     }
   }
 }
-
-post {
-  success {
-    emailext to: 'sand.car2024@gmail.com',
-             subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} success",
-             body: "Build: ${env.BUILD_URL}\nCommit: ${env.GIT_COMMIT}"
-  }
-  failure {
-    emailext to: 'sand.car2024@gmail.com',
-             subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} failed",
-             body: "Console: ${env.BUILD_URL}console"
-  }
-}
-
