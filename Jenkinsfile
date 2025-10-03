@@ -7,12 +7,11 @@ pipeline {
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         checkout scm
         script {
-          // Optional: last commit author email (won’t fail build if missing)
+          // not required, but harmless to keep
           env.COMMIT_EMAIL = sh(script: "git log -1 --pretty=%ae || true", returnStdout: true).trim()
         }
       }
@@ -32,51 +31,24 @@ pipeline {
       }
       post {
         success {
-          script {
-            try {
-              emailext(
-                to: env.RECIPIENTS,
-                subject: "Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: """Stage: Install deps
+          mail to: "${env.RECIPIENTS}",
+               subject: "Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: """Stage: Install deps
 Status: SUCCESS
 
 Console: ${env.BUILD_URL}console
-Attached: build.log""",
-                attachmentsPattern: 'build.log',
-                attachLog: true
-              )
-            } catch (e) {
-              mail to: env.RECIPIENTS,
-                   subject: "Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                   body: "Install deps passed. Console: ${env.BUILD_URL}console"
-            }
-          }
+(Attachments disabled for now)."""
         }
         failure {
-          script {
-            try {
-              emailext(
-                to: env.RECIPIENTS,
-                subject: "Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Install deps failed. See console: ${env.BUILD_URL}console",
-                attachLog: true,
-                compressLog: true
-              )
-            } catch (e) {
-              mail to: env.RECIPIENTS,
-                   subject: "Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                   body: "Install deps failed. See console: ${env.BUILD_URL}console"
-            }
-          }
+          mail to: "${env.RECIPIENTS}",
+               subject: "Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: "Install deps failed. See console: ${env.BUILD_URL}console"
         }
       }
     }
 
     stage('Tests') {
-      steps {
-        // keep build green even if snyk auth is missing
-        sh 'npm test || true'
-      }
+      steps { sh 'npm test || true' }  // keep build green
     }
 
     stage('Security Audit (npm)') {
@@ -84,25 +56,15 @@ Attached: build.log""",
         sh '''
           npm audit --json > audit.json || true
           npm audit --audit-level=high || true
+          echo "Audit report written to audit.json"
         '''
         archiveArtifacts artifacts: 'audit.json', fingerprint: true, allowEmptyArchive: true
       }
       post {
         always {
-          script {
-            try {
-              emailext(
-                to: env.RECIPIENTS,
-                subject: "Security Audit Report: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                body: "Audit complete. Report attached. Build page: ${env.BUILD_URL}",
-                attachmentsPattern: 'audit.json'
-              )
-            } catch (e) {
-              mail to: env.RECIPIENTS,
-                   subject: "Security Audit Report: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                   body: "Audit complete. See build page for artifacts: ${env.BUILD_URL}"
-            }
-          }
+          mail to: "${env.RECIPIENTS}",
+               subject: "Security Audit Report: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+               body: "Audit complete. Build page: ${env.BUILD_URL}\n(Attachments disabled for now)."
         }
       }
     }
@@ -117,12 +79,12 @@ Attached: build.log""",
 
   post {
     success {
-      mail to: 'sand.car2024@gmail.com',
+      mail to: "${env.RECIPIENTS}",
            subject: "✅ ${env.JOB_NAME} #${env.BUILD_NUMBER} SUCCESS",
            body: "Build passed. Details: ${env.BUILD_URL}"
     }
     failure {
-      mail to: 'sand.car2024@gmail.com',
+      mail to: "${env.RECIPIENTS}",
            subject: "❌ ${env.JOB_NAME} #${env.BUILD_NUMBER} FAILED",
            body: "Build failed. Check console: ${env.BUILD_URL}console"
     }
